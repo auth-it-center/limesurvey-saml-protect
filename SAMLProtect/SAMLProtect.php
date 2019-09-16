@@ -4,7 +4,7 @@
  * LimeSurvey SAML protected Surveys
  *
  * This plugin forces selected surveys to
- * be displayed/submited only to/by SASML users
+ * be displayed/submitted only to/by SAML users
  *
  * Author: Panagiotis Karatakis <karatakis@it.auth.gr>
  * Licence: GPL3
@@ -28,24 +28,28 @@ class SAMLProtect extends Limesurvey\PluginManager\PluginBase
         $this->subscribe('beforeSurveySettings');
         $this->subscribe('newSurveySettings');
         $this->subscribe('beforeSurveyPage');
+        $this->subscribe('getGlobalBasePermissions');
     }
 
     public function beforeSurveySettings()
     {
-        $event = $this->event;
-        $current = $this->get('auth_protection_enabled', 'Survey', $event->get('survey'));
-        $event->set('surveysettings.' . $this->id, [
-            'name' => get_class($this),
-            'settings' => [
-                'auth_protection_enabled' => [
-                    'type' => 'checkbox',
-                    'label' => 'Enabled',
-                    'help' => 'Only SAML users should see the survey ?',
-                    'default' => false,
-                    'current' => $current,
+        $permission = Permission::model()->hasGlobalPermission('plugin_settings', 'update');
+        if ($permission) {
+            $event = $this->event;
+            $current = $this->get('auth_protection_enabled', 'Survey', $event->get('survey'));
+            $event->set('surveysettings.' . $this->id, [
+                'name' => get_class($this),
+                'settings' => [
+                    'auth_protection_enabled' => [
+                        'type' => 'checkbox',
+                        'label' => 'Enabled',
+                        'help' => 'Only SAML users should see the survey ?',
+                        'default' => false,
+                        'current' => $current,
+                    ]
                 ]
-            ]
-        ]);
+            ]);
+        }
     }
 
     public function newSurveySettings()
@@ -71,5 +75,21 @@ class SAMLProtect extends Limesurvey\PluginManager\PluginBase
 
             $ssp->requireAuth();
         }
+    }
+
+    public function getGlobalBasePermissions() {
+        $this->getEvent()->append('globalBasePermissions',array(
+            'plugin_settings' => array(
+                'create' => false,
+                'update' => true, // allow only update permission to display
+                'delete' => false,
+                'import' => false,
+                'export' => false,
+                'read' => false,
+                'title' => gT("Save Plugin Settings"),
+                'description' => gT("Allow user to save plugin settings"),
+                'img' => 'usergroup'
+            ),
+        ));
     }
 }
