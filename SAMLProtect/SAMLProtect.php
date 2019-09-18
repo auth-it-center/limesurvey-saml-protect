@@ -36,16 +36,29 @@ class SAMLProtect extends Limesurvey\PluginManager\PluginBase
         $permission = Permission::model()->hasGlobalPermission('plugin_settings', 'update');
         if ($permission) {
             $event = $this->event;
-            $current = $this->get('auth_protection_enabled', 'Survey', $event->get('survey'));
             $event->set('surveysettings.' . $this->id, [
                 'name' => get_class($this),
                 'settings' => [
                     'auth_protection_enabled' => [
                         'type' => 'checkbox',
-                        'label' => 'Enabled',
+                        'label' => 'SAML Guard',
                         'help' => 'Only SAML users should see the survey ?',
                         'default' => false,
-                        'current' => $current,
+                        'current' => $this->get('auth_protection_enabled', 'Survey', $event->get('survey'), false),
+                    ],
+                    'auth_admin_protection_enabled' => [
+                        'type' => 'checkbox',
+                        'label' => 'Admin Guard',
+                        'help' => 'Only Admin users should see the survey ?',
+                        'default' => false,
+                        'current' => $this->get('auth_admin_protection_enabled', 'Survey', $event->get('survey'), false),
+                    ],
+                    'guard_bypass' => [
+                        'type' => 'checkbox',
+                        'label' => 'Guard Bypass',
+                        'help' => 'Only Admin users can bypass other plugin guards',
+                        'default' => false,
+                        'current' => $this->get('guard_bypass', 'Survey', $event->get('survey'), false),
                     ]
                 ]
             ]);
@@ -65,16 +78,61 @@ class SAMLProtect extends Limesurvey\PluginManager\PluginBase
     public function beforeSurveyPage()
     {
         $event = $this->event;
-        $id = $event->get('surveyId');
-        $flag = $this->get('auth_protection_enabled', 'Survey', $id);
+        $surveyId = $event->get('surveyId');
+        $this->SAMLGuard($surveyId);
+        $this->adminGuard($surveyId);
+    }
+
+    public function SAMLGuard($surveyId)
+    {
+        $flag = $this->get('auth_protection_enabled', 'Survey', $surveyId, false);
         if ($flag) {
-            // Check if user is authenticated
+            // Authenticate user
             $AuthSAML = $this->pluginManager->loadPlugin('AuthSAML');
-
             $ssp = $AuthSAML->get_saml_instance();
-
             $ssp->requireAuth();
         }
+    }
+
+    public function adminGuard($surveyId)
+    {
+        $flag = $this->get('auth_admin_protection_enabled', 'Survey', $surveyId, false);
+        if ($flag) {
+            $isAdmin = $this->isAdminUser();
+            if (!$isAdmin) {
+                throw new CHttpException(401, gT("We are sorry but you do not have permissions to do this."));
+            }
+        }
+        return false;
+    }
+
+    public function guardBypass($surveyId)
+    {
+        $flag = $this->get('guard_bypass', 'Survey', $surveyId, false);
+        if ($flag) {
+            $isAdmin = $this->isAdminUser($surveyId);
+            if ($isAdmin) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public function isAdminUser() {
+        $AuthSAML = $this->pluginManager->loadPlugin('AuthSAML');
+        $ssp = $AuthSAML->get_saml_instance();
+        $ssp->requireAuth();
+
+        $username = $AuthSAML->getUserNameAttribute();
+
+        $oUser = $AuthSAML->api->getUserByName($username);
+
+        // user object is null (not found)
+        if (!$oUser) {
+            return false;
+        }
+
+        return true;
     }
 
     public function getGlobalBasePermissions() {
